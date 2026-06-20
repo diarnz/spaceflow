@@ -24,6 +24,7 @@ import {
   setTemplateSelectHandler
 } from './furniturePanel.js';
 import { getRoomTemplate, getHackathonPodCenters, getMediaStudioLayout, getClassroomLayout } from './roomTemplates.js';
+import { initAiPanel, refreshAiRoomContext } from './aiPanel.js';
 
 const STORAGE_PREFIX = 'tumo_furniture_';
 const HIGHLIGHT_COLOR = new THREE.Color(0x44aaff);
@@ -118,11 +119,13 @@ function serializeLayout() {
   return items;
 }
 
-function persistLayout() {
+function persistLayout(options = {}) {
   if (!roomData?.roomId) return;
   const items = serializeLayout();
   saveLayout(roomData.roomId, items);
-  window.spaceFlowBridge?.send('LAYOUT_SAVED', { roomId: roomData.roomId, items });
+  if (!options.skipBridge) {
+    window.spaceFlowBridge?.send('LAYOUT_SAVED', { roomId: roomData.roomId, items });
+  }
 }
 
 function applyGhostOpacity(mesh, opacity) {
@@ -1637,6 +1640,8 @@ function buildPalette() {
     else deselectModel();
   });
 
+  initAiPanel();
+
   setFurniturePanelFilterHandler((filter) => {
     if (getActiveFurnishSection() === 'customize') {
       setRemoveMode(filter === 'remove');
@@ -1645,6 +1650,12 @@ function buildPalette() {
 
   setFurnitureSectionHandler((section) => {
     setTemplatesMode(section === 'templates');
+    if (section === 'ai') {
+      deselectModel();
+      clearSelectionHighlight();
+      setCrosshairVisible(false);
+      refreshAiRoomContext();
+    }
   });
 
   setTemplateSelectHandler((templateId) => {
@@ -1726,8 +1737,21 @@ export function updateFurnishingPreview() {
 export function initFurnishing(r, cam) {
   renderer = r;
   camera = cam;
+  window.__spaceflowGetLayoutItems = () => serializeLayout();
   raycaster = new THREE.Raycaster();
   buildPalette();
+
+  if (!window._aiLayoutListenerBound) {
+    window._aiLayoutListenerBound = true;
+    window.addEventListener('spaceflow:ai-layout', () => {
+      setFurnishSection('ai');
+      setTemplatesMode(false);
+      setActiveTemplateId(null);
+      deselectModel();
+      clearSelectionHighlight();
+      setCrosshairVisible(false);
+    });
+  }
 
   window.addEventListener('keydown', (e) => {
     if (!active || templatesModeActive) return;
@@ -1775,7 +1799,7 @@ export function enterFurnishingMode(group, data) {
   const savedItems = roomData?.roomId ? loadLayout(roomData.roomId) : [];
 
   if (savedItems.length === 0) {
-    setFurnishSection('templates');
+    setFurnishSection('ai');
     setActiveTemplateId(null);
   } else {
     setFurnishSection('customize');
@@ -1785,6 +1809,7 @@ export function enterFurnishingMode(group, data) {
 
   setTemplatesMode(getActiveFurnishSection() === 'templates');
   updatePlacedCount();
+  refreshAiRoomContext();
 }
 
 export function applyLayoutFromPlan(items, options = {}) {
@@ -1798,8 +1823,16 @@ export function applyLayoutFromPlan(items, options = {}) {
 
   clearSelectionHighlight();
   deselectModel();
-  persistLayout();
+  persistLayout({ skipBridge: options.source === 'ai_agent' });
   updatePlacedCount();
+}
+
+export function getCurrentLayoutItems() {
+  return serializeLayout();
+}
+
+export function getPersistedLayoutItems(roomId) {
+  return loadLayout(roomId);
 }
 
 export function captureRoomSnapshot() {

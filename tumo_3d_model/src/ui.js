@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { camera, controls, renderer, setCameraFov, INDOOR_FOV, OUTDOOR_FOV } from './sceneSetup.js';
+import { scene, camera, controls, renderer, setCameraFov, INDOOR_FOV, OUTDOOR_FOV } from './sceneSetup.js';
 import { boxData } from './factories.js';
 import { setFloorVisibilityFade } from './world.js';
 import { enterFurnishingMode, exitFurnishingMode, handleFurnishingClick } from './furnishing.js';
@@ -401,6 +401,16 @@ export function enterRoom(hitObject) {
 
   // Update UI Elements
   setOutdoorNavVisible(false);
+}
+
+export function enterRoomById(roomId) {
+  if (!roomId) return false;
+
+  const target = scene.getObjectByProperty('userData.roomId', roomId);
+  if (!target) return false;
+
+  enterRoom(target);
+  return true;
 }
 
 // ─── Exit Room ──────────────────────────────────────────────────────────────

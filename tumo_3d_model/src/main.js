@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { scene, camera, renderer, controls, setupLighting } from './sceneSetup.js';
 import { buildWorld } from './world.js';
-import { initUI, navState, indoorState, keys } from './ui.js';
+import { initUI, navState, indoorState, keys, enterRoomById } from './ui.js';
 import { preloadModels, boxData } from './factories.js';
 import { initFurnishing, updateFurnishingPreview, hydrateAllRoomLayouts } from './furnishing.js';
 import { isFloorPlanEditorOpen } from './floorPlanEditor.js';
@@ -54,8 +54,22 @@ preloadModels(
     initFurnishing(renderer, camera);
     hydrateAllRoomLayouts();
     initUI();
+    const initialRoomId = new URLSearchParams(window.location.search).get('autoRoom');
+    if (initialRoomId) {
+      requestAnimationFrame(() => {
+        enterRoomById(initialRoomId);
+      });
+    }
   }
 );
+
+window.addEventListener('message', (event) => {
+  if (event.origin !== 'http://localhost:5173') return;
+  const { type, payload = {} } = event.data || {};
+  if (type === 'NAVIGATE_TO_ROOM' && payload.roomId) {
+    enterRoomById(payload.roomId);
+  }
+});
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;

@@ -60,6 +60,19 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class AuthExchangeRequest(BaseModel):
+    access_token: str = Field(min_length=1)
+
+
+class AuthResponse(BaseModel):
+    access_token: str | None = None
+    token_type: str = "bearer"
+    expires_in: int | None = None
+    user: UserResponse | None = None
+    requires_email_verification: bool = False
+    message: str | None = None
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -482,4 +495,53 @@ class AIDesignRoomRequest(BaseModel):
 
 class AIDetectConflictsRequest(BaseModel):
     request_id: UUID
+
+
+class AIRunAgentRequest(BaseModel):
+    agent_type: Literal["copilot", "room_designer", "intake", "conflict_detector", "planner"] = "copilot"
+    message: str
+    context: dict[str, Any] = Field(default_factory=dict)
+    conversation_id: UUID | None = None
+
+
+class AIAgentResponse(BaseModel):
+    response: str
+    agent_type: str
+    tool_calls_made: list[dict[str, Any]]
+    conversation_id: UUID | None = None
+    iterations: int = 0
+
+
+class AIStreamChunk(BaseModel):
+    chunk_type: Literal["text", "tool_call", "done", "error"] = "text"
+    content: str = ""
+    tool_name: str | None = None
+    tool_result: dict[str, Any] | None = None
+
+
+class AIConversationSummary(BaseModel):
+    id: UUID
+    agent_type: str
+    message_count: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AIConversationDetail(BaseModel):
+    id: UUID
+    agent_type: str
+    messages: list[dict[str, Any]]
+    context_json: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AIToolInfo(BaseModel):
+    name: str
+    description: str
+    agent_types: list[str]
 

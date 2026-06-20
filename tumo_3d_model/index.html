@@ -88,6 +88,10 @@
                 <button type="button" class="furnish-tab furnish-tab--remove" data-filter="remove" role="tab" aria-selected="false">Remove</button>
               </nav>
               <nav class="furnish-sections" role="tablist" aria-label="Furnish mode">
+                <button type="button" class="furnish-section" data-section="ai" role="tab" aria-selected="false">
+                  <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M12 3l1.4 4.3H18l-3.5 2.6 1.4 4.3L12 11.6 8.1 14.2l1.4-4.3L6 7.3h4.6L12 3z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+                  AI
+                </button>
                 <button type="button" class="furnish-section active" data-section="templates" role="tab" aria-selected="true">
                   <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><rect x="3" y="4" width="7" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="14" y="4" width="7" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="3" y="14" width="7" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="14" y="14" width="7" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
                   Layouts
@@ -99,6 +103,18 @@
               </nav>
             </div>
           </header>
+        </div>
+
+        <div id="furnish-section-ai" class="furnish-section-view hidden">
+          <div class="ai-panel">
+            <div class="ai-panel-head">
+              <div id="ai-room-label" class="ai-room-label">Enter a room to use AI</div>
+              <div id="ai-status" class="ai-status">Connecting to SpaceFlow…</div>
+            </div>
+            <div id="ai-messages" class="ai-messages is-empty" aria-live="polite"></div>
+            <p class="ai-search-hint">Describe your layout — AI furnishes the room you are in.</p>
+            <div id="ai-search-mount" class="ai-search-mount"></div>
+          </div>
         </div>
 
         <div id="furnish-section-templates" class="furnish-section-view">

@@ -44,7 +44,7 @@ export function setTemplateSelectHandler(fn) {
 }
 
 export function setFurnishSection(section) {
-  if (section !== 'templates' && section !== 'customize') return;
+  if (section !== 'ai' && section !== 'templates' && section !== 'customize') return;
   activeSection = section;
   updateSections();
   updateSectionViews();
@@ -66,9 +66,11 @@ function updateSections() {
 }
 
 function updateSectionViews() {
+  document.getElementById('furnish-section-ai')?.classList.toggle('hidden', activeSection !== 'ai');
   document.getElementById('furnish-section-templates')?.classList.toggle('hidden', activeSection !== 'templates');
   document.getElementById('furnish-section-customize')?.classList.toggle('hidden', activeSection !== 'customize');
   document.getElementById('furnish-filter-tabs')?.classList.toggle('hidden', activeSection !== 'customize');
+  document.getElementById('furniture-panel')?.classList.toggle('furnish-mode-ai', activeSection === 'ai');
   document.body.classList.toggle('furnish-mode-build', activeSection === 'customize');
 }
 

@@ -36,6 +36,7 @@ from app.schemas import (
     QuotationUpdateRequest,
     TaskResponse,
     TaskUpdateRequest,
+    UserUpdateRequest,
     VenueAvailabilityResponse,
     VenueCreateRequest,
     VenueUpdateRequest,
@@ -149,12 +150,72 @@ def _mins_to_str(mins: int) -> str:
     return f"{h:02d}:{m:02d}"
 
 
+def normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def _fallback_full_name(email: str) -> str:
+    local = email.split("@", 1)[0].replace(".", " ").replace("_", " ").strip()
+    return local.title() or "SpaceFlow User"
+
+
+async def get_user_by_email(email: str, db: AsyncSession) -> User | None:
+    normalized = normalize_email(email)
+    return await db.scalar(select(User).where(func.lower(User.email) == normalized))
+
+
+async def upsert_external_auth_user(
+    *,
+    email: str,
+    full_name: str | None,
+    phone: str | None,
+    organization: str | None,
+    db: AsyncSession,
+    is_active: bool = True,
+) -> User:
+    normalized = normalize_email(email)
+    user = await get_user_by_email(normalized, db)
+
+    if user:
+        if user.role in {"admin", "staff"}:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This staff account is not linked to Supabase sign-in. Use the existing internal login.",
+            )
+        user.email = normalized
+        if full_name:
+            user.full_name = full_name
+        if phone:
+            user.phone = phone
+        if organization:
+            user.organization = organization
+        user.is_active = is_active
+        await db.commit()
+        await db.refresh(user)
+        return user
+
+    user = User(
+        email=normalized,
+        hashed_password=None,
+        full_name=full_name or _fallback_full_name(normalized),
+        role="client",
+        phone=phone,
+        organization=organization,
+        is_active=is_active,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
 async def register_user(*, email: str, password: str, full_name: str, phone: str | None, organization: str | None, db: AsyncSession) -> User:
-    existing = await db.scalar(select(User).where(User.email == email))
+    normalized = normalize_email(email)
+    existing = await get_user_by_email(normalized, db)
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An account with this email already exists.")
     user = User(
-        email=email,
+        email=normalized,
         hashed_password=hash_password(password),
         full_name=full_name,
         phone=phone,
@@ -167,8 +228,17 @@ async def register_user(*, email: str, password: str, full_name: str, phone: str
     return user
 
 
+async def update_user_profile(user: User, data: UserUpdateRequest, db: AsyncSession) -> User:
+    for field, value in data.model_dump(exclude_none=True).items():
+        setattr(user, field, value)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
 async def authenticate_user(email: str, password: str, db: AsyncSession) -> User:
-    user = await db.scalar(select(User).where(User.email == email, User.is_active.is_(True)))
+    normalized = normalize_email(email)
+    user = await db.scalar(select(User).where(func.lower(User.email) == normalized, User.is_active.is_(True)))
     if not user or not user.hashed_password or not verify_password(password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password.")
     return user
