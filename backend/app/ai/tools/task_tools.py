@@ -12,6 +12,7 @@ from app.services import (
     check_conflicts,
     conflicts_to_dict,
     generate_tasks_for_request,
+    decode_task_operations,
     get_request,
     list_tasks,
 )
@@ -116,6 +117,7 @@ async def generate_operational_tasks(args: dict[str, Any], db: AsyncSession) -> 
                 "id": str(t.id),
                 "title": t.title,
                 "task_type": t.task_type,
+                **decode_task_operations(t.description),
                 "due_at": str(t.due_at),
                 "priority": t.priority,
             }
@@ -136,6 +138,7 @@ async def list_request_tasks(args: dict[str, Any], db: AsyncSession) -> dict[str
                 "title": t.title,
                 "status": t.status,
                 "task_type": t.task_type,
+                **decode_task_operations(t.description),
                 "due_at": str(t.due_at),
                 "priority": t.priority,
             }

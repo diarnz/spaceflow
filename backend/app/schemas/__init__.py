@@ -400,12 +400,21 @@ TaskType = Literal["setup", "teardown", "preparation", "logistics", "coordinatio
 TaskStatus = Literal["pending", "assigned", "in_progress", "done", "blocked"]
 
 
+class TaskItem(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    quantity: int = Field(default=1, ge=1)
+
+
 class TaskResponse(BaseModel):
     id: UUID
     event_request_id: UUID
     event_title: str | None = None
     title: str
     description: str | None = None
+    pickup_room: str | None = None
+    destination_room: str | None = None
+    items: list[TaskItem] = Field(default_factory=list)
+    instructions: str | None = None
     task_type: TaskType
     assigned_to: UUID | None = None
     assignee_name: str | None = None
@@ -421,6 +430,10 @@ class TaskResponse(BaseModel):
 class TaskUpdateRequest(BaseModel):
     title: str | None = None
     description: str | None = None
+    pickup_room: str | None = None
+    destination_room: str | None = None
+    items: list[TaskItem] | None = None
+    instructions: str | None = None
     assigned_to: UUID | None = None
     due_at: datetime | None = None
     status: TaskStatus | None = None
@@ -634,4 +647,3 @@ class AIToolInfo(BaseModel):
     name: str
     description: str
     agent_types: list[str]
-

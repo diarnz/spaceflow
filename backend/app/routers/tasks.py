@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import get_current_user, require_staff
 from app.models import EventRequest, User
-from app.schemas import TaskResponse, TaskUpdateRequest
+from app.schemas import TaskResponse, TaskUpdateRequest, UserResponse
 from app.services import build_task_response, complete_task, generate_tasks_for_request, list_tasks, update_task
 
 
@@ -21,7 +21,15 @@ async def _serialize_tasks(tasks, db: AsyncSession) -> list[TaskResponse]:
     for task in tasks:
         event = await db.get(EventRequest, task.event_request_id)
         assignee = await db.get(User, task.assigned_to) if task.assigned_to else None
-        output.append(build_task_response(task, event.title if event else None, assignee.full_name if assignee else None))
+        output.append(
+            build_task_response(
+                task,
+                event.title if event else None,
+                assignee.full_name if assignee else None,
+                event.venue.name if event and event.venue else None,
+                event.attendee_count if event else 1,
+            )
+        )
     return output
 
 
@@ -31,7 +39,7 @@ async def route_generate_tasks(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_staff),
 ) -> list[TaskResponse]:
-    tasks = await generate_tasks_for_request(request_id, db)
+    tasks = await generate_tasks_for_request(request_id, db, ai_generated=True)
     return await _serialize_tasks(tasks, db)
 
 
@@ -54,6 +62,19 @@ async def route_my_tasks(
 ) -> list[TaskResponse]:
     tasks = await list_tasks(db, assigned_to=current_user.id)
     return await _serialize_tasks([task for task in tasks if task.status != "done"], db)
+
+
+@router.get("/workers", response_model=list[UserResponse])
+async def route_list_workers(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_staff),
+) -> list[UserResponse]:
+    workers = await db.scalars(
+        select(User)
+        .where(User.role.in_(("admin", "staff")), User.is_active.is_(True))
+        .order_by(User.full_name)
+    )
+    return [UserResponse.model_validate(worker) for worker in workers]
 
 
 @router.put("/{task_id}", response_model=TaskResponse)

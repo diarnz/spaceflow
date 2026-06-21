@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
+import json
+from math import ceil
 from typing import Any
 from uuid import UUID
 
@@ -55,7 +57,9 @@ THREE_D_ROOM_DIMENSIONS: dict[str, dict[str, float]] = {
 
 ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "draft": {"submitted", "cancelled"},
-    "submitted": {"under_review", "cancelled"},
+    # Admins can approve or reject directly from the request detail page.
+    # Assigning a venue still moves submitted requests into under_review.
+    "submitted": {"under_review", "approved", "rejected", "cancelled"},
     "under_review": {"quotation_sent", "approved", "rejected", "cancelled"},
     "quotation_sent": {"approved", "rejected", "cancelled"},
     "approved": {"confirmed", "cancelled", "completed"},
@@ -120,6 +124,152 @@ TASK_TEMPLATES: dict[str, list[dict[str, Any]]] = {
         {"title": "Disassemble and store stage panels", "task_type": "teardown", "priority": 1, "offset_from_end_hours": 3},
     ],
 }
+
+TASK_OPS_PREFIX = "SFOPS:"
+
+
+def encode_task_operations(
+    *,
+    pickup_room: str | None,
+    destination_room: str | None,
+    items: list[dict[str, Any]] | None,
+    instructions: str | None,
+) -> str:
+    return TASK_OPS_PREFIX + json.dumps(
+        {
+            "pickup_room": pickup_room or "",
+            "destination_room": destination_room or "",
+            "items": [
+                {
+                    "name": str(item.get("name", "")).strip(),
+                    "quantity": max(1, int(item.get("quantity", 1))),
+                }
+                for item in (items or [])
+                if str(item.get("name", "")).strip()
+            ],
+            "instructions": instructions or "",
+        },
+        separators=(",", ":"),
+    )
+
+
+def decode_task_operations(description: str | None) -> dict[str, Any]:
+    empty = {
+        "pickup_room": None,
+        "destination_room": None,
+        "items": [],
+        "instructions": description,
+    }
+    if not description or not description.startswith(TASK_OPS_PREFIX):
+        return empty
+    try:
+        data = json.loads(description[len(TASK_OPS_PREFIX) :])
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return empty
+    normalized_items: list[dict[str, Any]] = []
+    for item in data.get("items", []):
+        if isinstance(item, str) and item.strip():
+            normalized_items.append({"name": item.strip(), "quantity": 1})
+        elif isinstance(item, dict) and str(item.get("name", "")).strip():
+            try:
+                quantity = max(1, int(item.get("quantity", 1)))
+            except (TypeError, ValueError):
+                quantity = 1
+            normalized_items.append(
+                {"name": str(item["name"]).strip(), "quantity": quantity}
+            )
+    return {
+        "pickup_room": data.get("pickup_room") or None,
+        "destination_room": data.get("destination_room") or None,
+        "items": normalized_items,
+        "instructions": data.get("instructions") or None,
+    }
+
+
+def infer_task_operations(
+    title: str,
+    task_type: str,
+    venue_name: str,
+    attendee_count: int = 1,
+) -> dict[str, Any]:
+    lowered = title.lower()
+    items: list[dict[str, Any]] = []
+    storage = "General Storage"
+
+    item_groups = [
+        (("chair", "seating"), [("Chairs", attendee_count)], "Furniture Storage"),
+        (
+            ("table", "desk"),
+            [("Tables", max(1, ceil(attendee_count / 6)))],
+            "Furniture Storage",
+        ),
+        (("registration",), [("Registration table", 1), ("Chairs", 2)], "Furniture Storage"),
+        (
+            ("projector", "screen", "av system"),
+            [("Projector", 1), ("Display screen", 1), ("AV cable sets", 2)],
+            "AV Storage",
+        ),
+        (
+            ("microphone", "pa system", "sound"),
+            [("Microphones", max(2, ceil(attendee_count / 50))), ("Speakers", 2), ("Audio cable sets", 2)],
+            "AV Storage",
+        ),
+        (("lighting", "light"), [("Lighting rigs", 2), ("Power cable sets", 2)], "AV Storage"),
+        (
+            ("laptop", "pc", "peripheral"),
+            [("Computers", attendee_count), ("Keyboards", attendee_count), ("Power adapters", attendee_count)],
+            "IT Storage",
+        ),
+        (
+            ("whiteboard",),
+            [("Whiteboards", max(1, ceil(attendee_count / 20))), ("Marker sets", max(1, ceil(attendee_count / 20)))],
+            "Learning Materials Storage",
+        ),
+        (("signage", "directional"), [("Event signs", 4), ("Sign stands", 4)], "Operations Storage"),
+        (
+            ("stage panel", "stage"),
+            [("Stage panels", max(4, ceil(attendee_count / 25))), ("Fastener sets", max(4, ceil(attendee_count / 25)))],
+            "Stage Storage",
+        ),
+        (
+            ("power strip",),
+            [("Power strips", max(1, ceil(attendee_count / 4))), ("Extension cables", max(1, ceil(attendee_count / 12)))],
+            "IT Storage",
+        ),
+        (("workshop materials",), [("Workshop material packs", attendee_count)], "Learning Materials Storage"),
+    ]
+    for keywords, inferred_items, inferred_storage in item_groups:
+        if any(keyword in lowered for keyword in keywords):
+            items.extend(
+                {"name": name, "quantity": max(1, quantity)}
+                for name, quantity in inferred_items
+            )
+            storage = inferred_storage
+
+    if task_type == "teardown":
+        pickup_room = venue_name
+        destination_room = storage
+        instructions = f"Collect the listed items from {venue_name}, count them, and return them safely to {storage}."
+    elif task_type in {"setup", "logistics"}:
+        pickup_room = storage
+        destination_room = venue_name
+        instructions = f"Collect the listed items from {storage}, deliver them to {venue_name}, and place them according to the approved event layout."
+    else:
+        pickup_room = "Operations Office"
+        destination_room = venue_name
+        instructions = f"Complete the preparation check for {venue_name} and report any blocker before the due time."
+
+    return {
+        "pickup_room": pickup_room,
+        "destination_room": destination_room,
+        "items": list(
+            {
+                item["name"]: item
+                for item in items
+            }.values()
+        ),
+        "instructions": instructions,
+    }
 
 
 @dataclass
@@ -805,20 +955,33 @@ async def send_quotation(quotation_id: UUID, db: AsyncSession) -> Quotation:
 async def generate_tasks_for_request(request_id: UUID, db: AsyncSession, *, ai_generated: bool = False) -> list[Task]:
     req = await get_request(request_id, db)
     template = TASK_TEMPLATES.get(req.event_type, TASK_TEMPLATES["conference"])
-    await db.execute(delete(Task).where(Task.event_request_id == request_id, Task.ai_generated.is_(False)))
+    await db.execute(
+        delete(Task).where(
+            Task.event_request_id == request_id,
+            Task.ai_generated.is_(ai_generated),
+        )
+    )
 
     event_start = combine_date_time(req.requested_date, req.start_time)
     event_end = combine_date_time(req.requested_date, req.end_time)
 
     created: list[Task] = []
+    venue_name = req.venue.name if req.venue else "Assigned Event Room"
     for item in template:
         if "offset_from_start_hours" in item:
             due_at = event_start + timedelta(hours=item["offset_from_start_hours"])
         else:
             due_at = event_end + timedelta(hours=item["offset_from_end_hours"])
+        operations = infer_task_operations(
+            item["title"],
+            item["task_type"],
+            venue_name,
+            req.attendee_count,
+        )
         task = Task(
             event_request_id=request_id,
             title=item["title"],
+            description=encode_task_operations(**operations),
             task_type=item["task_type"],
             due_at=due_at,
             priority=item["priority"],
@@ -861,10 +1024,28 @@ async def get_task(task_id: UUID, db: AsyncSession) -> Task:
 
 async def update_task(task_id: UUID, data: TaskUpdateRequest, db: AsyncSession) -> Task:
     task = await get_task(task_id, db)
-    for field, value in data.model_dump(exclude_none=True).items():
+    payload = data.model_dump(exclude_unset=True)
+    operation_fields = {"pickup_room", "destination_room", "items", "instructions"}
+    if operation_fields.intersection(data.model_fields_set):
+        current = decode_task_operations(task.description)
+        task.description = encode_task_operations(
+            pickup_room=payload.get("pickup_room", current["pickup_room"]),
+            destination_room=payload.get("destination_room", current["destination_room"]),
+            items=payload.get("items", current["items"]),
+            instructions=payload.get("instructions", current["instructions"]),
+        )
+    for field, value in payload.items():
+        if field in operation_fields:
+            continue
         setattr(task, field, value)
+    if "assigned_to" in data.model_fields_set and task.assigned_to and task.status == "pending":
+        task.status = "assigned"
+    if "assigned_to" in data.model_fields_set and not task.assigned_to and task.status == "assigned":
+        task.status = "pending"
     if task.status == "done" and not task.completed_at:
         task.completed_at = datetime.now(timezone.utc)
+    elif task.status != "done":
+        task.completed_at = None
     await db.commit()
     await db.refresh(task)
     return task
@@ -989,13 +1170,31 @@ async def get_request_context(request_id: UUID, db: AsyncSession) -> dict[str, A
     }
 
 
-def build_task_response(task: Task, event_title: str | None = None, assignee_name: str | None = None) -> TaskResponse:
+def build_task_response(
+    task: Task,
+    event_title: str | None = None,
+    assignee_name: str | None = None,
+    venue_name: str | None = None,
+    attendee_count: int = 1,
+) -> TaskResponse:
+    operations = decode_task_operations(task.description)
+    if not operations["pickup_room"] and not operations["destination_room"]:
+        operations = infer_task_operations(
+            task.title,
+            task.task_type,
+            venue_name or "Assigned Event Room",
+            attendee_count,
+        )
     return TaskResponse(
         id=task.id,
         event_request_id=task.event_request_id,
         event_title=event_title,
         title=task.title,
-        description=task.description,
+        description=operations["instructions"],
+        pickup_room=operations["pickup_room"],
+        destination_room=operations["destination_room"],
+        items=operations["items"],
+        instructions=operations["instructions"],
         task_type=task.task_type,
         assigned_to=task.assigned_to,
         assignee_name=assignee_name,

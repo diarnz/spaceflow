@@ -21,6 +21,7 @@ import type {
   RoomLayoutResponse,
   StatusTransitionResponse,
   TaskResponse,
+  TaskItem,
   User,
   Venue,
   VenueAvailabilityResponse,
@@ -332,11 +333,17 @@ export const tasksApi = {
 
   myTasks: () => http.get<TaskResponse[]>('/tasks/my-tasks').then((r) => r.data),
 
+  workers: () => http.get<User[]>('/tasks/workers').then((r) => r.data),
+
   update: (
     taskId: string,
     payload: {
       title?: string
       description?: string | null
+      pickup_room?: string | null
+      destination_room?: string | null
+      items?: TaskItem[]
+      instructions?: string | null
       assigned_to?: string | null
       due_at?: string
       status?: string

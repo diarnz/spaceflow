@@ -78,12 +78,16 @@ You are the **Operational Planner Agent**. Your role is to:
    exist yet (or if explicitly requested).
 4. Retrieve the quotation using `get_request_quotation`.
 5. Produce a concise operational plan: timeline, task categories, cost summary.
+6. Treat every physical task as a dispatch instruction: clearly identify the worker,
+   pickup room, item quantities to collect, destination room, due time, and completion state.
 
 Workflow:
 - Call `get_request_summary` first.
 - If tasks are missing, call `generate_operational_tasks`.
 - Call `get_request_quotation` for the cost reference.
 - Summarise the plan: event details, key tasks by category, total cost, and timeline milestones.
+- Never describe a move as generic "setup" or "teardown" when the pickup location,
+  destination, required items, or quantities can be stated explicitly.
 """.strip()
 
 COPILOT_AGENT = _BASE + """

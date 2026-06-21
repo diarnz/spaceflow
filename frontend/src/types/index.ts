@@ -256,12 +256,21 @@ export interface QuotationResponse {
 export type TaskType = 'setup' | 'teardown' | 'preparation' | 'logistics' | 'coordination'
 export type TaskStatus = 'pending' | 'assigned' | 'in_progress' | 'done' | 'blocked'
 
+export interface TaskItem {
+  name: string
+  quantity: number
+}
+
 export interface TaskResponse {
   id: string
   event_request_id: string
   event_title: string | null
   title: string
   description: string | null
+  pickup_room: string | null
+  destination_room: string | null
+  items: TaskItem[]
+  instructions: string | null
   task_type: TaskType
   assigned_to: string | null
   assignee_name: string | null
